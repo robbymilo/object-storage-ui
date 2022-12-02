@@ -7,11 +7,16 @@
 	<link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
-{{ range .files }}
+  {{ range .dirs }}
   <div>
-    <a href="/{{ .Name }}{{ .Prefix }}">/{{ .Name }}{{ .Prefix }}</a>
+    <a href="{{ .Name }}">{{ .Name }}</a>
   </div>
-{{ end }}
+  {{ end }}
+  {{ range .files }}
+  <div>
+    <a href="{{ .Name }}">{{ .Name }}</a>
+  </div>
+  {{ end }}
 </body>
 </html>
 {{end}}

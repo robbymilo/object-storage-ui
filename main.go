@@ -9,17 +9,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
-	"strconv"
 
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
 )
 
-type File struct {
-	Name   string
-	Prefix string
+type Object struct {
+	Name string
 }
 
 func main() {
@@ -117,7 +116,8 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 		Delimiter: delim,
 	})
 
-	Files := []File{}
+	Files := []Object{}
+	Dirs := []Object{}
 	for {
 		attrs, err := it.Next()
 		if err == iterator.Done {
@@ -126,12 +126,20 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			panic(err)
 		}
-		Files = append(
-			Files,
-			File{
-				Name:   attrs.Name,
-				Prefix: attrs.Prefix,
-			})
+
+		if attrs.Name != "" {
+			Files = append(
+				Files,
+				Object{
+					Name: attrs.Name,
+				})
+		} else if attrs.Prefix != "" {
+			Dirs = append(
+				Dirs,
+				Object{
+					Name: attrs.Prefix,
+				})
+		}
 		// fmt.Println(attrs.Prefix, attrs.Name)
 	}
 
@@ -141,6 +149,7 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 	tmpl, _ := template.ParseFiles(lp, fp)
 	varmap := map[string]interface{}{
 		"files": Files,
+		"dirs":  Dirs,
 	}
 	tmpl.ExecuteTemplate(w, "layout", varmap)
 }
