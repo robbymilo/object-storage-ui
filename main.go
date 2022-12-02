@@ -7,15 +7,21 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+  "strings"
 
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
 )
 
+type File struct {
+	Name   string
+	Prefix string
+}
+
 func main() {
-  fs := http.FileServer(http.Dir("./static"))
-	http.Handle("/static/", http.StripPrefix("/static/", fs))
-	http.HandleFunc("/", serveTemplate)
+	fs := http.FileServer(http.Dir("./assets"))
+	http.Handle("/assets/", http.StripPrefix("/assets/", fs))
+	http.HandleFunc("/", handleRequest)
 
 	log.Print("Listening on :3000...")
 	err := http.ListenAndServe(":3000", nil)
@@ -24,15 +30,20 @@ func main() {
 	}
 }
 
-func serveTemplate(w http.ResponseWriter, r *http.Request) {
-	lp := filepath.Join("templates", "layout.html")
-	fp := filepath.Join("templates", "example.html")
+func handleRequest(w http.ResponseWriter, r *http.Request) {
+  if (strings.HasSuffix(r.URL.Path, "/") == true) {
+    listDir(w, r)
+  } else {
+    serveFile(w, r)
+  }
 
-	tmpl, _ := template.ParseFiles(lp, fp)
-	tmpl.ExecuteTemplate(w, "layout", nil)
 }
 
-func list() {
+func serveFile(w http.ResponseWriter, r *http.Request) {
+  fmt.Println(r.URL.Path)
+}
+
+func listDir(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 
 	client, err := storage.NewClient(ctx)
@@ -47,13 +58,22 @@ func list() {
 	// Creates a Bucket instance.
 	bucket := client.Bucket(bucketName)
 
-	prefix := "media/"
+  prefix := ""
 	delim := "/"
+
+  if (r.URL.Path[1:] != "") {
+    // non-root path
+    prefix = r.URL.Path[1:]
+  }
+
+  fmt.Println(prefix, delim)
 
 	it := bucket.Objects(ctx, &storage.Query{
 		Prefix:    prefix,
 		Delimiter: delim,
 	})
+
+	Files := []File{}
 	for {
 		attrs, err := it.Next()
 		if err == iterator.Done {
@@ -62,7 +82,22 @@ func list() {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println(attrs.Prefix, attrs.Name)
+		Files = append(
+			Files,
+			File{
+				Name:   attrs.Name,
+				Prefix: attrs.Prefix,
+			})
+		// fmt.Println(attrs.Prefix, attrs.Name)
 	}
 
+  lp := filepath.Join("templates", "layout.html")
+	fp := filepath.Join("templates", "example.html")
+
+
+	tmpl, _ := template.ParseFiles(lp, fp)
+	varmap := map[string]interface{}{
+		"files": Files,
+	}
+	tmpl.ExecuteTemplate(w, "layout", varmap)
 }

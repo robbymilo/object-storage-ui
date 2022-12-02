@@ -4,10 +4,14 @@
 <head>
 	<meta charset="utf-8">
 	<title>{{template "title"}}</title>
-	<link rel="stylesheet" href="/static/style.css">
+	<link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
-	{{template "body"}}
+{{ range .files }}
+  <div>
+    <a href="/{{ .Name }}{{ .Prefix }}">/{{ .Name }}{{ .Prefix }}</a>
+  </div>
+{{ end }}
 </body>
 </html>
 {{end}}
