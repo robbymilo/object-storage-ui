@@ -18,7 +18,8 @@ import (
 )
 
 type Object struct {
-	Name string
+	Name  string
+	Value string
 }
 
 func main() {
@@ -125,18 +126,20 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 
-		if (attrs.Name != "" && attrs.Name != r.URL.Path[1:]) {
+		if attrs.Name != "" && attrs.Name != r.URL.Path[1:] {
 			Files = append(
 				Files,
 				Object{
-					Name: attrs.Name,
+					Name:  strings.Replace(attrs.Name, r.URL.Path[1:], "", -1),
+					Value: attrs.Name,
 				})
 		}
 		if attrs.Prefix != "" {
 			Dirs = append(
 				Dirs,
 				Object{
-					Name: attrs.Prefix,
+					Name:  strings.Replace(attrs.Prefix, r.URL.Path[1:], "", -1),
+					Value: attrs.Prefix,
 				})
 		}
 	}
@@ -144,10 +147,23 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 	lp := filepath.Join("templates", "layout.html")
 	fp := filepath.Join("templates", "example.html")
 
+	Paths := []Object{}
+	for _, v := range strings.Split(r.URL.Path, "/") {
+		if v != "" {
+			Paths = append(
+				Paths,
+				Object{
+					Name:  v,
+					Value: v,
+				})
+		}
+	}
+
 	tmpl, _ := template.ParseFiles(lp, fp)
 	varmap := map[string]interface{}{
 		"files": Files,
 		"dirs":  Dirs,
+		"paths": Paths,
 	}
 	tmpl.ExecuteTemplate(w, "layout", varmap)
 }

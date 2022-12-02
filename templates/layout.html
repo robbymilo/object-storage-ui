@@ -7,14 +7,28 @@
 	<link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
+  <div>
+    <span>
+      <a href="/">Home</a>
+      <span>/</span>
+    </span>
+    {{ $paths := .paths }}
+    {{ $len := len .paths }}
+    {{ $r := "" }}
+    {{- range $i, $e := .paths -}}
+      {{ $r = print $r "/" $e.Name }}
+      <a href="{{ $r }}/">{{ $e.Name }} /</a>
+    {{- end -}}
+  </div>
+  <hr>
   {{ range .dirs }}
   <div>
-    Dir: <a href="/{{ .Name }}">/{{ .Name }}</a>
+    Dir: <a href="/{{ .Value }}">{{ .Name }}</a>
   </div>
   {{ end }}
   {{ range .files }}
   <div>
-    File: <a href="/{{ .Name }}">/{{ .Name }}</a>
+    File: <a href="/{{ .Value }}">{{ .Name }}</a>
   </div>
   {{ end }}
 </body>
