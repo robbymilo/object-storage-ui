@@ -109,8 +109,6 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 		prefix = r.URL.Path[1:]
 	}
 
-	fmt.Println(prefix, delim)
-
 	it := bucket.Objects(ctx, &storage.Query{
 		Prefix:    prefix,
 		Delimiter: delim,
@@ -127,20 +125,20 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 
-		if attrs.Name != "" {
+		if (attrs.Name != "" && attrs.Name != r.URL.Path[1:]) {
 			Files = append(
 				Files,
 				Object{
 					Name: attrs.Name,
 				})
-		} else if attrs.Prefix != "" {
+		}
+		if attrs.Prefix != "" {
 			Dirs = append(
 				Dirs,
 				Object{
 					Name: attrs.Prefix,
 				})
 		}
-		// fmt.Println(attrs.Prefix, attrs.Name)
 	}
 
 	lp := filepath.Join("templates", "layout.html")
