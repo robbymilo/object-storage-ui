@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"io/ioutil"
 
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
@@ -25,6 +26,7 @@ type Object struct {
 func main() {
 	fs := http.FileServer(http.Dir("./assets"))
 	http.Handle("/assets/", http.StripPrefix("/assets/", fs))
+	http.HandleFunc("/upload", handleUpload)
 	http.HandleFunc("/", handleRequest)
 
 	log.Print("Listening on :3000...")
@@ -40,6 +42,36 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	} else {
 		serveFile(w, r)
 	}
+
+}
+
+func handleUpload(w http.ResponseWriter, r *http.Request) {
+	r.ParseMultipartForm(10 << 20)
+	file, handler, err := r.FormFile("filename")
+	if err != nil {
+		fmt.Println("Error Retrieving the File")
+		fmt.Println(err)
+		return
+	}
+	defer file.Close()
+	fmt.Printf("Uploaded File: %+v\n", handler.Filename)
+	fmt.Printf("File Size: %+v\n", handler.Size)
+	fmt.Printf("MIME Header: %+v\n", handler.Header)
+
+	tempFile, err := ioutil.TempFile("./temp-images", "upload-*.png")
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer tempFile.Close()
+
+	fileBytes, err := ioutil.ReadAll(file)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	tempFile.Write(fileBytes)
+
+	fmt.Fprintf(w, "Successfully Uploaded File\n")
 
 }
 
@@ -164,6 +196,7 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 		"files": Files,
 		"dirs":  Dirs,
 		"paths": Paths,
+		"current": r.URL.Path,
 	}
 	tmpl.ExecuteTemplate(w, "layout", varmap)
 }
