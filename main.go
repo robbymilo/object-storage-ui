@@ -25,6 +25,8 @@ type Object struct {
 	Size    int64
 }
 
+var bucket = "staging-static-grafana-com"
+
 func main() {
 	fs := http.FileServer(http.Dir("./assets"))
 	http.Handle("/assets/", http.StripPrefix("/assets/", fs))
@@ -40,6 +42,7 @@ func main() {
 }
 
 func handleRequest(w http.ResponseWriter, r *http.Request) {
+	fmt.Println(r.URL)
 	if strings.HasSuffix(r.URL.Path, "/") == true {
 		listDir(w, r)
 	} else {
@@ -124,15 +127,15 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 func uploadFile(w io.Writer, object string) error {
 	fmt.Println("uploading " + object + " to GCS")
-	bucket := "staging-static-grafana-com"
+
 	ctx := context.Background()
+
 	client, err := storage.NewClient(ctx)
 	if err != nil {
-		return fmt.Errorf("storage.NewClient: %v", err)
+		log.Fatalf("Failed to create client: %v", err)
 	}
 	defer client.Close()
 
-	// Open local file.
 	f, err := os.Open(fmt.Sprintf("./tmp%s", object))
 	if err != nil {
 		return fmt.Errorf("os.Open: %v", err)
@@ -142,6 +145,7 @@ func uploadFile(w io.Writer, object string) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*50)
 	defer cancel()
 
+	// remove slash from beginning of string as it's not a real dir
 	o := client.Bucket(bucket).Object(strings.TrimPrefix(object, "/"))
 
 	// Upload an object with storage.Writer.
@@ -167,19 +171,14 @@ func serveFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer client.Close()
 
-	// Sets the name for the new bucket.
-	bucketName := "staging-static-grafana-com"
-
-	// Creates a Bucket instance.
-	bucket := client.Bucket(bucketName)
-	oh := bucket.Object(r.URL.Path[1:])
-	objAttrs, err := oh.Attrs(ctx)
+	o := client.Bucket(bucket).Object(r.URL.Path[1:])
+	objAttrs, err := o.Attrs(ctx)
 	if err != nil {
 		http.Error(w, "Not found", 404)
 		return
 	}
-	o := oh.ReadCompressed(true)
-	rc, err := o.NewReader(ctx)
+	ot := o.ReadCompressed(true)
+	rc, err := ot.NewReader(ctx)
 	if err != nil {
 		http.Error(w, "Not found", 404)
 		return
@@ -204,12 +203,6 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 	}
 	defer client.Close()
 
-	// Sets the name for the new bucket.
-	bucketName := "staging-static-grafana-com"
-
-	// Creates a Bucket instance.
-	bucket := client.Bucket(bucketName)
-
 	prefix := ""
 	delim := "/"
 
@@ -218,7 +211,7 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 		prefix = r.URL.Path[1:]
 	}
 
-	it := bucket.Objects(ctx, &storage.Query{
+	it := client.Bucket(bucket).Objects(ctx, &storage.Query{
 		Prefix:    prefix,
 		Delimiter: delim,
 	})
@@ -281,11 +274,9 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleSearch(w http.ResponseWriter, r *http.Request) {
-
 	query := r.URL.Query().Get("q")
-	fmt.Println(query)
+	fmt.Println(r.URL)
 
-	bucket := "staging-static-grafana-com"
 	ctx := context.Background()
 	client, err := storage.NewClient(ctx)
 	if err != nil {
@@ -351,6 +342,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		"dirs":    Dirs,
 		"paths":   Paths,
 		"current": r.URL.Path,
+		"query":	query,
 	}
 
 	render(w, r, varmap)
