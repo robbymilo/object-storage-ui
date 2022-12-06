@@ -9,12 +9,13 @@
 <body>
   <div>
     <form enctype="multipart/form-data" action="/upload" autocomplete="off" method="post">
-      <input type="text" id="path" name="path">
-      <input type="file" id="myFile" name="filename" multiple>
-      <input type="hidden" name="path" value="{{ .current }}">
+      <input type="text" id="path" name="path" placeholder="Folder to uploader file(s) to" value="{{ .current }}">
+      <input type="file" id="filenae" name="filename" multiple>
+      {{/*  <input type="hidden" name="path" value="{{ .current }}">  */}}
       <input type="submit" value="Upload">
     </form>
   </div>
+  <hr>
   <div>
     <span>
       <a href="/">Home</a>

@@ -48,6 +48,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 func handleUpload(w http.ResponseWriter, r *http.Request) {
 	r.ParseMultipartForm(100 << 20)
 	files := r.MultipartForm.File["filename"]
+	path := r.Form.Get("path")
 
 	for _, fileHeader := range files {
 		// check if file exists
@@ -74,13 +75,17 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		err = os.MkdirAll("./tmp", os.ModePerm)
+		if (path[len(path)-1:] != "/") {
+			path = path + "/"
+		}
+
+		err = os.MkdirAll("./tmp" + path, os.ModePerm)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		name := fmt.Sprintf("./tmp/%s", fileHeader.Filename)
+		name := fmt.Sprintf("./tmp%s%s", path, fileHeader.Filename)
 		f, err := os.Create(name)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -100,7 +105,12 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 			log.Fatalf("failed creating file: %s", err)
 		}
 
-		uploadFile(bufio.NewWriter(final), fileHeader.Filename)
+		err = uploadFile(bufio.NewWriter(final), path + fileHeader.Filename)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Fatalf("Failed uploading to GCS: %v", err)
+			return
+		}
 
 	}
 
@@ -109,6 +119,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 func uploadFile(w io.Writer, object string) error {
+	fmt.Println("uploading " + object + " to GCS")
 	bucket := "staging-static-grafana-com"
 	ctx := context.Background()
 	client, err := storage.NewClient(ctx)
@@ -118,7 +129,7 @@ func uploadFile(w io.Writer, object string) error {
 	defer client.Close()
 
 	// Open local file.
-	f, err := os.Open(fmt.Sprintf("./tmp/%s", object))
+	f, err := os.Open(fmt.Sprintf("./tmp%s", object))
 	if err != nil {
 		return fmt.Errorf("os.Open: %v", err)
 	}
@@ -127,7 +138,7 @@ func uploadFile(w io.Writer, object string) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*50)
 	defer cancel()
 
-	o := client.Bucket(bucket).Object(object)
+	o := client.Bucket(bucket).Object(strings.TrimPrefix(object, "/"))
 
 	// Upload an object with storage.Writer.
 	wc := o.NewWriter(ctx)
