@@ -114,6 +114,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	}
 
+	http.Redirect(w, r, path, http.StatusSeeOther)
 	fmt.Fprintf(w, "Upload successful")
 
 }

@@ -1,46 +1,17 @@
-{{define "layout"}}
+{{ define "layout" }}
 <!doctype html>
 <html>
 <head>
 	<meta charset="utf-8">
-	<title>{{template "title"}}</title>
+	<title>{{ template "title" }}</title>
 	<link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
-  <div>
-    <form enctype="multipart/form-data" action="/upload" autocomplete="off" method="post">
-      <input type="text" id="path" name="path" placeholder="Folder to uploader file(s) to" value="{{ .current }}">
-      <input type="file" id="filenae" name="filename" multiple>
-      {{/*  <input type="hidden" name="path" value="{{ .current }}">  */}}
-      <input type="submit" value="Upload">
-    </form>
-  </div>
+  {{ template "upload" . }}
   <hr>
-  <div>
-    <span>
-      <a href="/">Home</a>
-      <span>/</span>
-    </span>
-    {{ $paths := .paths }}
-    {{ $len := len .paths }}
-    {{ $r := "" }}
-    {{- range $i, $e := .paths -}}
-      {{ $r = print $r "/" $e.Name }}
-      <a href="{{ $r }}/">{{ $e.Name }}</a>
-      <span> / </span>
-    {{- end -}}
-  </div>
+  {{ template "breadcrumb" . }}
   <hr>
-  {{ range .dirs }}
-  <div>
-    Dir: <a href="/{{ .Value }}">{{ .Name }}</a>
-  </div>
-  {{ end }}
-  {{ range .files }}
-  <div>
-    File: <a href="/{{ .Value }}">{{ .Name }}</a>
-  </div>
-  {{ end }}
+  {{ template "body" . }}
 </body>
 </html>
-{{end}}
+{{ end }}

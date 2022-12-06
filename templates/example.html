@@ -1,5 +1,48 @@
-{{define "title"}}A templated page{{end}}
+{{ define "title" }}
+  {{ .current }}
+{{ end }}
 
-{{define "body"}}
-<h1>Hello from a templated page</h1>
-{{end}}
+{{ define "upload" }}
+<div>
+  <form enctype="multipart/form-data" action="/upload" autocomplete="off" method="post">
+    <div>
+      <input type="text" id="path" name="path" placeholder="Folder to upload file(s)" value="{{ .current }}">
+      <label for="path">Folder to upload files(s)</label>
+    </div>
+    <input type="file" id="filenae" name="filename" multiple>
+    <div>
+      <input type="submit" value="Upload">
+    </div>
+  </form>
+</div>
+{{ end }}
+
+{{ define "breadcrumb" }}
+<div>
+  <span>
+    <a href="/"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M6.5 14.5v-3.505c0-.245.25-.495.5-.495h2c.25 0 .5.25.5.5v3.5a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5v-7a.5.5 0 0 0-.146-.354L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293L8.354 1.146a.5.5 0 0 0-.708 0l-6 6A.5.5 0 0 0 1.5 7.5v7a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5z"></path></svg></a>
+    <span>/</span>
+  </span>
+  {{ $paths := .paths }}
+  {{ $len := len .paths }}
+  {{ $r := "" }}
+  {{- range $i, $e := .paths -}}
+    {{ $r = print $r "/" $e.Name }}
+    <a href="{{ $r }}/">{{ $e.Name }}</a>
+    <span> / </span>
+  {{- end -}}
+</div>
+{{ end }}
+
+{{ define "body" }}
+  {{ range .dirs }}
+    <div>
+      <a href="/{{ .Value }}">{{ .Name }}</a>
+    </div>
+    {{ end }}
+    {{ range .files }}
+    <div>
+      <a href="/{{ .Value }}">{{ .Name }}</a>
+    </div>
+  {{ end }}
+{{ end }}
