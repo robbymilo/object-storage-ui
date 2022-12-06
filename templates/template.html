@@ -40,6 +40,7 @@
     <th>Name</th>
     <th>Updated</th>
     <th>Size</th>
+    <th>&nbsp;</th>
   </thead>
   <tbody>
     {{ range .dirs }}
@@ -63,6 +64,9 @@
         </td>
         <td>
           {{ .Size }}
+        </td>
+        <td>
+          <img src="/{{ .Value }}" alt="{{ .Name }}" loading="lazy" height="18">
         </td>
       </tr>
     {{ end }}
