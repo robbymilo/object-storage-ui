@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"html/template"
@@ -12,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"io/ioutil"
 
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
@@ -46,39 +46,104 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleUpload(w http.ResponseWriter, r *http.Request) {
-	r.ParseMultipartForm(10 << 20)
-	file, handler, err := r.FormFile("filename")
-	if err != nil {
-		fmt.Println("Error Retrieving the File")
-		fmt.Println(err)
-		return
+	r.ParseMultipartForm(100 << 20)
+	files := r.MultipartForm.File["filename"]
+
+	for _, fileHeader := range files {
+		// check if file exists
+
+		// Open the file
+		file, err := fileHeader.Open()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		defer file.Close()
+
+		buff := make([]byte, 512)
+		_, err = file.Read(buff)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		_, err = file.Seek(0, io.SeekStart)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		err = os.MkdirAll("./tmp", os.ModePerm)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		name := fmt.Sprintf("./tmp/%s", fileHeader.Filename)
+		f, err := os.Create(name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		defer f.Close()
+
+		_, err = io.Copy(f, file)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		final, err := os.OpenFile(name, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatalf("failed creating file: %s", err)
+		}
+
+		uploadFile(bufio.NewWriter(final), fileHeader.Filename)
+
 	}
-	defer file.Close()
-	fmt.Printf("Uploaded File: %+v\n", handler.Filename)
-	fmt.Printf("File Size: %+v\n", handler.Size)
-	fmt.Printf("MIME Header: %+v\n", handler.Header)
 
-	tempFile, err := ioutil.TempFile("./temp-images", "upload-*.png")
+	fmt.Fprintf(w, "Upload successful")
+
+}
+
+func uploadFile(w io.Writer, object string) error {
+	bucket := "staging-static-grafana-com"
+	ctx := context.Background()
+	client, err := storage.NewClient(ctx)
 	if err != nil {
-		fmt.Println(err)
+		return fmt.Errorf("storage.NewClient: %v", err)
 	}
-	defer tempFile.Close()
+	defer client.Close()
 
-	fileBytes, err := ioutil.ReadAll(file)
+	// Open local file.
+	f, err := os.Open(fmt.Sprintf("./tmp/%s", object))
 	if err != nil {
-		fmt.Println(err)
+		return fmt.Errorf("os.Open: %v", err)
 	}
+	defer f.Close()
 
-	tempFile.Write(fileBytes)
+	ctx, cancel := context.WithTimeout(ctx, time.Second*50)
+	defer cancel()
 
-	fmt.Fprintf(w, "Successfully Uploaded File\n")
+	o := client.Bucket(bucket).Object(object)
 
+	// Upload an object with storage.Writer.
+	wc := o.NewWriter(ctx)
+	if _, err = io.Copy(wc, f); err != nil {
+		return fmt.Errorf("io.Copy: %v", err)
+	}
+	if err := wc.Close(); err != nil {
+		return fmt.Errorf("Writer.Close: %v", err)
+	}
+	fmt.Fprintf(w, "Blob %v uploaded.\n", object)
+	return nil
 }
 
 func serveFile(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.Path)
 
-	start := time.Now()
 	ctx := context.Background()
 
 	client, err := storage.NewClient(ctx)
@@ -95,10 +160,6 @@ func serveFile(w http.ResponseWriter, r *http.Request) {
 	oh := bucket.Object(r.URL.Path[1:])
 	objAttrs, err := oh.Attrs(ctx)
 	if err != nil {
-		if os.Getenv("LOGGING") == "true" {
-			elapsed := time.Since(start)
-			log.Println("| 404 |", elapsed.String(), r.Host, r.Method, r.URL.Path)
-		}
 		http.Error(w, "Not found", 404)
 		return
 	}
@@ -193,9 +254,9 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 
 	tmpl, _ := template.ParseFiles(lp, fp)
 	varmap := map[string]interface{}{
-		"files": Files,
-		"dirs":  Dirs,
-		"paths": Paths,
+		"files":   Files,
+		"dirs":    Dirs,
+		"paths":   Paths,
 		"current": r.URL.Path,
 	}
 	tmpl.ExecuteTemplate(w, "layout", varmap)
