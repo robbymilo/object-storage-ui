@@ -35,14 +35,37 @@
 {{ end }}
 
 {{ define "body" }}
-  {{ range .dirs }}
-    <div>
-      <a href="/{{ .Value }}">{{ .Name }}</a>
-    </div>
+<table>
+  <thead>
+    <th>Name</th>
+    <th>Updated</th>
+    <th>Size</th>
+  </thead>
+  <tbody>
+    {{ range .dirs }}
+      <tr>
+        <td>
+          <a href="/{{ .Value }}">{{ .Name }}</a>
+        </td>
+        <td>
+          {{ .Updated }}
+        </td>
+        <td>&nbsp;</td>
+      </tr>
     {{ end }}
     {{ range .files }}
-    <div>
-      <a href="/{{ .Value }}">{{ .Name }}</a>
-    </div>
-  {{ end }}
+      <tr>
+        <td>
+          <a href="/{{ .Value }}">{{ .Name }}</a>
+        </td>
+        <td>
+          {{ .Updated }}
+        </td>
+        <td>
+          {{ .Size }}
+        </td>
+      </tr>
+    {{ end }}
+  </tbody>
+</table>
 {{ end }}

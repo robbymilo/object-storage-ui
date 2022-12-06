@@ -21,6 +21,8 @@ import (
 type Object struct {
 	Name  string
 	Value string
+	Updated time.Time
+	Size int64
 }
 
 func main() {
@@ -237,6 +239,8 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 				Object{
 					Name:  strings.Replace(attrs.Name, r.URL.Path[1:], "", -1),
 					Value: attrs.Name,
+					Updated: attrs.Updated,
+					Size: attrs.Size,
 				})
 		}
 		if attrs.Prefix != "" {
@@ -245,12 +249,15 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 				Object{
 					Name:  strings.Replace(attrs.Prefix, r.URL.Path[1:], "", -1),
 					Value: attrs.Prefix,
+					Updated: attrs.Updated,
+					Size: attrs.Size,
 				})
 		}
+
 	}
 
 	lp := filepath.Join("templates", "layout.html")
-	fp := filepath.Join("templates", "example.html")
+	fp := filepath.Join("templates", "template.html")
 
 	Paths := []Object{}
 	for _, v := range strings.Split(r.URL.Path, "/") {
