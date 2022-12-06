@@ -19,16 +19,17 @@ import (
 )
 
 type Object struct {
-	Name  string
-	Value string
+	Name    string
+	Value   string
 	Updated time.Time
-	Size int64
+	Size    int64
 }
 
 func main() {
 	fs := http.FileServer(http.Dir("./assets"))
 	http.Handle("/assets/", http.StripPrefix("/assets/", fs))
 	http.HandleFunc("/upload", handleUpload)
+	http.HandleFunc("/search", handleSearch)
 	http.HandleFunc("/", handleRequest)
 
 	log.Print("Listening on :3000...")
@@ -77,11 +78,11 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if (path[len(path)-1:] != "/") {
+		if path[len(path)-1:] != "/" {
 			path = path + "/"
 		}
 
-		err = os.MkdirAll("./tmp" + path, os.ModePerm)
+		err = os.MkdirAll("./tmp"+path, os.ModePerm)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -107,7 +108,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 			log.Fatalf("failed creating file: %s", err)
 		}
 
-		err = uploadFile(bufio.NewWriter(final), path + fileHeader.Filename)
+		err = uploadFile(bufio.NewWriter(final), path+fileHeader.Filename)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			log.Fatalf("Failed uploading to GCS: %v", err)
@@ -237,21 +238,100 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 			Files = append(
 				Files,
 				Object{
-					Name:  strings.Replace(attrs.Name, r.URL.Path[1:], "", -1),
-					Value: attrs.Name,
+					Name:    strings.Replace(attrs.Name, r.URL.Path[1:], "", -1),
+					Value:   attrs.Name,
 					Updated: attrs.Updated,
-					Size: attrs.Size,
+					Size:    attrs.Size,
 				})
 		}
 		if attrs.Prefix != "" {
 			Dirs = append(
 				Dirs,
 				Object{
-					Name:  strings.Replace(attrs.Prefix, r.URL.Path[1:], "", -1),
-					Value: attrs.Prefix,
+					Name:    strings.Replace(attrs.Prefix, r.URL.Path[1:], "", -1),
+					Value:   attrs.Prefix,
 					Updated: attrs.Updated,
-					Size: attrs.Size,
+					Size:    attrs.Size,
 				})
+		}
+
+	}
+
+	lp := filepath.Join("templates", "layout.html")
+	fp := filepath.Join("templates", "template.html")
+
+	Paths := []Object{}
+	for _, v := range strings.Split(r.URL.Path, "/") {
+		if v != "" {
+			Paths = append(
+				Paths,
+				Object{
+					Name:  v,
+					Value: v,
+				})
+		}
+	}
+
+	tmpl, _ := template.ParseFiles(lp, fp)
+	varmap := map[string]interface{}{
+		"files":   Files,
+		"dirs":    Dirs,
+		"paths":   Paths,
+		"current": r.URL.Path,
+	}
+	tmpl.ExecuteTemplate(w, "layout", varmap)
+}
+
+func handleSearch(w http.ResponseWriter, r *http.Request) {
+
+	query := r.URL.Query().Get("q")
+	fmt.Println(query)
+
+	bucket := "staging-static-grafana-com"
+	ctx := context.Background()
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		fmt.Errorf("storage.NewClient: %v", err)
+	}
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+
+	it := client.Bucket(bucket).Objects(ctx, nil)
+	Files := []Object{}
+	Dirs := []Object{}
+	for {
+		attrs, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			panic(err)
+		}
+
+		if strings.Contains(attrs.Name, query) == true {
+			if attrs.Name != "" && attrs.Name != r.URL.Path[1:] {
+				Files = append(
+					Files,
+					Object{
+						Name:    strings.Replace(attrs.Name, r.URL.Path[1:], "", -1),
+						Value:   attrs.Name,
+						Updated: attrs.Updated,
+						Size:    attrs.Size,
+					})
+			}
+			if attrs.Prefix != "" {
+				Dirs = append(
+					Dirs,
+					Object{
+						Name:    strings.Replace(attrs.Prefix, r.URL.Path[1:], "", -1),
+						Value:   attrs.Prefix,
+						Updated: attrs.Updated,
+						Size:    attrs.Size,
+					})
+			}
+
 		}
 
 	}
