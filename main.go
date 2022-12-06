@@ -257,9 +257,6 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 
 	}
 
-	lp := filepath.Join("templates", "layout.html")
-	fp := filepath.Join("templates", "template.html")
-
 	Paths := []Object{}
 	for _, v := range strings.Split(r.URL.Path, "/") {
 		if v != "" {
@@ -279,7 +276,9 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 		"paths":   Paths,
 		"current": r.URL.Path,
 	}
-	tmpl.ExecuteTemplate(w, "layout", varmap)
+
+	render(w, r, varmap)
+
 }
 
 func handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -336,9 +335,6 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	}
 
-	lp := filepath.Join("templates", "layout.html")
-	fp := filepath.Join("templates", "template.html")
-
 	Paths := []Object{}
 	for _, v := range strings.Split(r.URL.Path, "/") {
 		if v != "" {
@@ -351,12 +347,21 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tmpl, _ := template.ParseFiles(lp, fp)
 	varmap := map[string]interface{}{
 		"files":   Files,
 		"dirs":    Dirs,
 		"paths":   Paths,
 		"current": r.URL.Path,
 	}
-	tmpl.ExecuteTemplate(w, "layout", varmap)
+
+	render(w, r, varmap)
+
+}
+
+func render(w http.ResponseWriter, r *http.Request, v map[string]interface{}) {
+	lp := filepath.Join("templates", "layout.html")
+	fp := filepath.Join("templates", "template.html")
+	tmpl, _ := template.ParseFiles(lp, fp)
+
+	tmpl.ExecuteTemplate(w, "layout", v)
 }
