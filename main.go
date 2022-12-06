@@ -269,7 +269,6 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tmpl, _ := template.ParseFiles(lp, fp)
 	varmap := map[string]interface{}{
 		"files":   Files,
 		"dirs":    Dirs,
