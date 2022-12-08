@@ -47,6 +47,10 @@ tr:hover {
   cursor: pointer;
 }
 
+.icon svg {
+  padding-right: 4px;
+}
+
 @media (prefers-color-scheme: dark) {
   body {
     background-color: #000;

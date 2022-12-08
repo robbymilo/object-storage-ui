@@ -190,6 +190,7 @@ func serveFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", objAttrs.ContentType)
 	w.Header().Set("Content-Encoding", objAttrs.ContentEncoding)
 	w.Header().Set("Content-Length", strconv.Itoa(int(objAttrs.Size)))
+	w.Header().Set("Cache-Control", "max-age: 31536000")
 	w.WriteHeader(200)
 	if _, err := io.Copy(w, rc); err != nil {
 		return
