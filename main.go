@@ -14,10 +14,22 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
+	// "encoding/json"
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
 )
+
+type GCSObjects []GCSObject
+
+type GCSObject struct {
+	Name    string
+	Prefix  string
+	Value   string
+	Updated time.Time
+	Size    int64
+}
+
+type Objects []Object
 
 type Object struct {
 	Name    string
@@ -36,23 +48,48 @@ func main() {
 	http.HandleFunc("/search", handleSearch)
 	http.HandleFunc("/", handleRequest)
 
-	log.Print("Listening on :3000...")
+	log.Print("listening on :3000...")
 	err := http.ListenAndServe(":3000", nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
+// determines if we should send a file or render a template
 func handleRequest(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(r.URL)
-	if strings.HasSuffix(r.URL.Path, "/") == true {
-		listDir(w, r)
+	log.Print(r.URL)
+
+	path := r.URL.Path
+
+	if strings.HasSuffix(path, "/") == true {
+		// needs trailing slash on requests as dirs aren't real in GCS
+
+		prefix := ""
+		if path[1:] != "" {
+			// non-root path
+			prefix = path[1:]
+		}
+
+		// get list of raw GCS objects
+		o := getFiles(prefix, "/")
+
+		// get list of formatted objects for final output
+		m := buildGCSMap(o, path)
+
+		// send data to template
+		render(w, r, m)
+
+		// todo - send json if client requests
+		// w.Header().Set("Content-Type", "application/json")
+		// json.NewEncoder(w).Encode(m)
+
 	} else {
 		serveFile(w, r)
 	}
 
 }
 
+// get multiple files to upload
 func handleUpload(w http.ResponseWriter, r *http.Request) {
 	r.ParseMultipartForm(100 << 20)
 	files := r.MultipartForm.File["filename"]
@@ -116,19 +153,20 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		err = uploadFile(bufio.NewWriter(final), path+fileHeader.Filename)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			log.Fatalf("Failed uploading to GCS: %v", err)
+			log.Fatalf("failed uploading to GCS: %v", err)
 			return
 		}
 
 	}
 
 	http.Redirect(w, r, path, http.StatusSeeOther)
-	fmt.Fprintf(w, "Upload successful")
+	log.Print("upload successful")
 
 }
 
+// upload a single file
 func uploadFile(w io.Writer, object string) error {
-	fmt.Println("uploading " + object + " to GCS")
+	log.Print("uploading " + object + " to GCS")
 
 	ctx := context.Background()
 
@@ -163,26 +201,26 @@ func uploadFile(w io.Writer, object string) error {
 }
 
 func serveFile(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(r.URL.Path)
+	log.Print(r.URL.Path)
 
 	ctx := context.Background()
 
 	client, err := storage.NewClient(ctx)
 	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
+		log.Fatalf("failed to create client: %v", err)
 	}
 	defer client.Close()
 
 	o := client.Bucket(bucket).Object(r.URL.Path[1:])
 	objAttrs, err := o.Attrs(ctx)
 	if err != nil {
-		http.Error(w, "Not found", 404)
+		http.Error(w, "not found", 404)
 		return
 	}
 	ot := o.ReadCompressed(true)
 	rc, err := ot.NewReader(ctx)
 	if err != nil {
-		http.Error(w, "Not found", 404)
+		http.Error(w, "not found", 404)
 		return
 	}
 	defer rc.Close()
@@ -197,92 +235,8 @@ func serveFile(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func listDir(w http.ResponseWriter, r *http.Request) {
-	ctx := context.Background()
-
-	client, err := storage.NewClient(ctx)
-	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
-	}
-	defer client.Close()
-
-	prefix := ""
-	delim := "/"
-
-	if r.URL.Path[1:] != "" {
-		// non-root path
-		prefix = r.URL.Path[1:]
-	}
-
-	it := client.Bucket(bucket).Objects(ctx, &storage.Query{
-		Prefix:    prefix,
-		Delimiter: delim,
-	})
-
-	Files := []Object{}
-	Dirs := []Object{}
-	for {
-		attrs, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			panic(err)
-		}
-
-		updated := attrs.Updated.Format(format)
-
-		if attrs.Name != "" && attrs.Name != r.URL.Path[1:] {
-			Files = append(
-				Files,
-				Object{
-					Name:    strings.Replace(attrs.Name, r.URL.Path[1:], "", -1),
-					Value:   attrs.Name,
-					Updated: updated,
-					Size:    size(attrs.Size),
-				})
-		}
-		if attrs.Prefix != "" {
-			Dirs = append(
-				Dirs,
-				Object{
-					Name:    strings.Replace(attrs.Prefix, r.URL.Path[1:], "", -1),
-					Value:   attrs.Prefix,
-					Updated: updated,
-					Size:    size(attrs.Size),
-				})
-		}
-
-	}
-
-	Paths := []Object{}
-	for _, v := range strings.Split(r.URL.Path, "/") {
-		if v != "" {
-			Paths = append(
-				Paths,
-				Object{
-					Name:  v,
-					Value: v,
-				})
-		}
-	}
-
-	varmap := map[string]interface{}{
-		"files":   Files,
-		"dirs":    Dirs,
-		"paths":   Paths,
-		"current": r.URL.Path,
-		"bucket":  bucket,
-	}
-
-	render(w, r, varmap)
-
-}
-
-func handleSearch(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query().Get("q")
-	fmt.Println(r.URL)
-
+// get raw data of a "dir" from GCS
+func getFiles(prefix string, delim string) GCSObjects {
 	ctx := context.Background()
 	client, err := storage.NewClient(ctx)
 	if err != nil {
@@ -293,48 +247,101 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
 	defer cancel()
 
-	it := client.Bucket(bucket).Objects(ctx, nil)
-	Files := []Object{}
-	Dirs := []Object{}
+	query := &storage.Query{
+		Prefix:    prefix,
+		Delimiter: delim,
+	}
+
+	it := client.Bucket(bucket).Objects(ctx, query)
+
+	objs := []GCSObject{}
 	for {
 		attrs, err := it.Next()
 		if err == iterator.Done {
 			break
 		}
 		if err != nil {
-			panic(err)
+			fmt.Errorf("Bucket(%q).Objects(): %v", bucket, err)
+		}
+		objs = append(
+			objs,
+			GCSObject{
+				Name:    attrs.Name,
+				Prefix:  attrs.Prefix,
+				Value:   attrs.Name,
+				Updated: attrs.Updated,
+				Size:    attrs.Size,
+			})
+	}
+	return objs
+}
+
+func handleSearch(w http.ResponseWriter, r *http.Request) {
+	log.Print(r.URL)
+
+	query := r.URL.Query().Get("q")
+	if query != "" {
+		o := getFiles("", "")
+
+		results := o[:0]
+
+		// loop through all the bucket objects and check if the name contains the query
+		// if it does, build a new slice and add the item
+		for _, item := range o {
+			if strings.Contains(item.Name, query) {
+				results = append(results, item)
+			}
 		}
 
-		updated := attrs.Updated.Format(format)
+		// get list of formatted objects for final output
+		m := buildGCSMap(results, r.URL.Path)
 
-		if strings.Contains(attrs.Name, query) == true {
-			if attrs.Name != "" && attrs.Name != r.URL.Path[1:] {
-				Files = append(
-					Files,
-					Object{
-						Name:    strings.Replace(attrs.Name, r.URL.Path[1:], "", -1),
-						Value:   attrs.Name,
-						Updated: updated,
-						Size:    size(attrs.Size),
-					})
-			}
-			if attrs.Prefix != "" {
-				Dirs = append(
-					Dirs,
-					Object{
-						Name:    strings.Replace(attrs.Prefix, r.URL.Path[1:], "", -1),
-						Value:   attrs.Prefix,
-						Updated: updated,
-						Size:    size(attrs.Size),
-					})
-			}
+		// send data to template
+		render(w, r, m)
 
+		// todo - send json if client requests
+		// w.Header().Set("Content-Type", "application/json")
+		// json.NewEncoder(w).Encode(b)
+	}
+}
+
+// transform raw GCS data into a format a template can work with
+func buildGCSMap(o GCSObjects, path string) map[string]interface{} {
+
+	Files := []Object{}
+	Dirs := []Object{}
+
+	// build template compatiable map
+	for _, item := range o {
+
+		updated := item.Updated.Format(format)
+
+		if item.Name != "" && item.Name != path[1:] {
+			Files = append(
+				Files,
+				Object{
+					Name:    strings.Replace(item.Name, path[1:], "", -1),
+					Value:   item.Name,
+					Updated: updated,
+					Size:    size(item.Size),
+				})
+		}
+		if item.Prefix != "" {
+			Dirs = append(
+				Dirs,
+				Object{
+					Name:    strings.Replace(item.Prefix, path[1:], "", -1),
+					Value:   item.Prefix,
+					Updated: updated,
+					Size:    size(item.Size),
+				})
 		}
 
 	}
 
+	// add current path to map
 	Paths := []Object{}
-	for _, v := range strings.Split(r.URL.Path, "/") {
+	for _, v := range strings.Split(path, "/") {
 		if v != "" {
 			Paths = append(
 				Paths,
@@ -349,23 +356,23 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		"files":   Files,
 		"dirs":    Dirs,
 		"paths":   Paths,
-		"current": r.URL.Path,
-		"query":   query,
+		"current": path,
 		"bucket":  bucket,
 	}
 
-	render(w, r, varmap)
-
+	return varmap
 }
 
+// convert raw size to KB
+func size(s int64) float64 {
+	return math.Round(float64(s) * .001)
+}
+
+// render a template based on the given data
 func render(w http.ResponseWriter, r *http.Request, v map[string]interface{}) {
 	lp := filepath.Join("templates", "layout.html")
 	fp := filepath.Join("templates", "template.html")
 	tmpl, _ := template.ParseFiles(lp, fp)
 
 	tmpl.ExecuteTemplate(w, "layout", v)
-}
-
-func size(s int64) float64 {
-	return math.Round(float64(s) * .001)
 }
