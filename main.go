@@ -2,8 +2,11 @@ package main
 
 import (
 	"bufio"
+	"cloud.google.com/go/storage"
 	"context"
+	"encoding/json"
 	"fmt"
+	"google.golang.org/api/iterator"
 	"html/template"
 	"io"
 	"log"
@@ -14,9 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"encoding/json"
-	"cloud.google.com/go/storage"
-	"google.golang.org/api/iterator"
 )
 
 type GCSObjects []GCSObject
@@ -76,7 +76,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		// get list of formatted objects for final output
 		m := buildGCSMap(o, path)
 
-		if r.Header["Accept"][0] == "application/json" {
+		if (r.Header["Accept"][0] == "application/json" || r.URL.Query().Get("json") == "true") {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(m)
 		} else {
@@ -279,6 +279,7 @@ func getFiles(prefix string, delim string) GCSObjects {
 
 func handleSearch(w http.ResponseWriter, r *http.Request) {
 	log.Print(r.URL)
+	j := r.URL.Query().Get("json")
 
 	query := r.URL.Query().Get("q")
 	if query != "" {
@@ -297,7 +298,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		// get list of formatted objects for final output
 		m := buildGCSMap(results, r.URL.Path)
 
-		if r.Header["Accept"][0] == "application/json" {
+		if (r.Header["Accept"][0] == "application/json" || j == "true") {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(m)
 		} else {
@@ -334,7 +335,7 @@ func buildGCSMap(o GCSObjects, path string) map[string]interface{} {
 				Object{
 					Name:    strings.Replace(item.Prefix, path[1:], "", -1),
 					Value:   item.Prefix,
-					Updated: updated,
+					Updated: "",
 					Size:    size(item.Size),
 				})
 		}
