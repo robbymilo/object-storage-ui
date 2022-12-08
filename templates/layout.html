@@ -7,10 +7,20 @@
 	<link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
-  {{ template "search" . }}
-  {{ template "upload" . }}
-  {{ template "breadcrumb" . }}
-  {{ template "body" . }}
+  <div class="head">
+    <div class="search">
+      {{ template "search" . }}
+    </div>
+    <div class="upload">
+      {{ template "upload" . }}
+    </div>
+  </div>
+  <div class="breadcrumb">
+    {{ template "breadcrumb" . }}
+  </div>
+  <div class="body">
+    {{ template "body" . }}
+  </div>
 </body>
 </html>
 {{ end }}

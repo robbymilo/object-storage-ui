@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,11 +22,12 @@ import (
 type Object struct {
 	Name    string
 	Value   string
-	Updated time.Time
-	Size    int64
+	Updated string
+	Size    float64
 }
 
 var bucket = "staging-static-grafana-com"
+var format = "2006-01-02 15:04"
 
 func main() {
 	fs := http.FileServer(http.Dir("./assets"))
@@ -227,14 +229,16 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 
+		updated := attrs.Updated.Format(format)
+
 		if attrs.Name != "" && attrs.Name != r.URL.Path[1:] {
 			Files = append(
 				Files,
 				Object{
 					Name:    strings.Replace(attrs.Name, r.URL.Path[1:], "", -1),
 					Value:   attrs.Name,
-					Updated: attrs.Updated,
-					Size:    attrs.Size,
+					Updated: updated,
+					Size:    size(attrs.Size),
 				})
 		}
 		if attrs.Prefix != "" {
@@ -243,8 +247,8 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 				Object{
 					Name:    strings.Replace(attrs.Prefix, r.URL.Path[1:], "", -1),
 					Value:   attrs.Prefix,
-					Updated: attrs.Updated,
-					Size:    attrs.Size,
+					Updated: updated,
+					Size:    size(attrs.Size),
 				})
 		}
 
@@ -267,6 +271,7 @@ func listDir(w http.ResponseWriter, r *http.Request) {
 		"dirs":    Dirs,
 		"paths":   Paths,
 		"current": r.URL.Path,
+		"bucket":  bucket,
 	}
 
 	render(w, r, varmap)
@@ -299,6 +304,8 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 
+		updated := attrs.Updated.Format(format)
+
 		if strings.Contains(attrs.Name, query) == true {
 			if attrs.Name != "" && attrs.Name != r.URL.Path[1:] {
 				Files = append(
@@ -306,8 +313,8 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 					Object{
 						Name:    strings.Replace(attrs.Name, r.URL.Path[1:], "", -1),
 						Value:   attrs.Name,
-						Updated: attrs.Updated,
-						Size:    attrs.Size,
+						Updated: updated,
+						Size:    size(attrs.Size),
 					})
 			}
 			if attrs.Prefix != "" {
@@ -316,8 +323,8 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 					Object{
 						Name:    strings.Replace(attrs.Prefix, r.URL.Path[1:], "", -1),
 						Value:   attrs.Prefix,
-						Updated: attrs.Updated,
-						Size:    attrs.Size,
+						Updated: updated,
+						Size:    size(attrs.Size),
 					})
 			}
 
@@ -342,7 +349,8 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		"dirs":    Dirs,
 		"paths":   Paths,
 		"current": r.URL.Path,
-		"query":	query,
+		"query":   query,
+		"bucket":  bucket,
 	}
 
 	render(w, r, varmap)
@@ -355,4 +363,8 @@ func render(w http.ResponseWriter, r *http.Request, v map[string]interface{}) {
 	tmpl, _ := template.ParseFiles(lp, fp)
 
 	tmpl.ExecuteTemplate(w, "layout", v)
+}
+
+func size(s int64) float64 {
+	return math.Round(float64(s) * .001)
 }
