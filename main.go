@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	// "encoding/json"
+	"encoding/json"
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
 )
@@ -76,12 +76,13 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		// get list of formatted objects for final output
 		m := buildGCSMap(o, path)
 
-		// send data to template
-		render(w, r, m)
-
-		// todo - send json if client requests
-		// w.Header().Set("Content-Type", "application/json")
-		// json.NewEncoder(w).Encode(m)
+		if r.Header["Accept"][0] == "application/json" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(m)
+		} else {
+			// send data to html template
+			render(w, r, m)
+		}
 
 	} else {
 		serveFile(w, r)
@@ -296,12 +297,13 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		// get list of formatted objects for final output
 		m := buildGCSMap(results, r.URL.Path)
 
-		// send data to template
-		render(w, r, m)
-
-		// todo - send json if client requests
-		// w.Header().Set("Content-Type", "application/json")
-		// json.NewEncoder(w).Encode(b)
+		if r.Header["Accept"][0] == "application/json" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(m)
+		} else {
+			// send data to html template
+			render(w, r, m)
+		}
 	}
 }
 
