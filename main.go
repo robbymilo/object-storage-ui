@@ -42,6 +42,10 @@ var bucket = "staging-static-grafana-com"
 var format = "2006-01-02 15:04"
 
 func main() {
+	if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
+		log.Fatal("GOOGLE_APPLICATION_CREDENTIALS env var missing. Set to the location of the service account json key.")
+	}
+
 	fs := http.FileServer(http.Dir("./assets"))
 	http.Handle("/assets/", http.StripPrefix("/assets/", fs))
 	http.HandleFunc("/upload", handleUpload)
@@ -76,7 +80,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		// get list of formatted objects for final output
 		m := buildGCSMap(o, path)
 
-		if (r.Header["Accept"][0] == "application/json" || r.URL.Query().Get("json") == "true") {
+		if r.Header["Accept"][0] == "application/json" || r.URL.Query().Get("json") == "true" {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(m)
 		} else {
@@ -298,7 +302,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		// get list of formatted objects for final output
 		m := buildGCSMap(results, r.URL.Path)
 
-		if (r.Header["Accept"][0] == "application/json" || j == "true") {
+		if r.Header["Accept"][0] == "application/json" || j == "true" {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(m)
 		} else {
