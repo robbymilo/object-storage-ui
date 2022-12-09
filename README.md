@@ -12,3 +12,5 @@ Options (need to be in order):
       --allow-delete           Allow delete
       --allow-search           Allow search
 ```
+
+![](./object-storage-ui.png)
