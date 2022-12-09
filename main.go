@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"flag"
 )
 
 type GCSObjects []GCSObject
@@ -38,23 +39,32 @@ type Object struct {
 	Size    float64
 }
 
-var bucket = "staging-static-grafana-com"
+var port = flag.String("port", "3000", "port to listen on")
+var bucketName = flag.String("bucket-name", "default value", "name of bucket")
+var pathPrefix = flag.String("path-prefix", "", "a path to prefix the application. use if running the application on a subdirectory.")
+var domainPrefix = flag.String("domain-prefix", "", "a domain to use for serving files. use if files will be served from different application.")
+var allowUpload = flag.Bool("allow-upload", false, "allow users to upload files")
+var allowDelete = flag.Bool("allow-delete", false, "allow users to delete files")
+var allowSearch = flag.Bool("allow-search", true, "allow users to search files and directories. searches the entire bucket.")
 var format = "2006-01-02 15:04"
-var pathPrefix = "/upload"
 
 func main() {
+	flag.Parse()
+
 	if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
 		log.Fatal("GOOGLE_APPLICATION_CREDENTIALS env var missing. Set to the location of the service account json key.")
 	}
 
 	fs := http.FileServer(http.Dir("./assets"))
-	http.Handle(pathPrefix+"/assets/", http.StripPrefix(pathPrefix+"/assets/", fs))
-	// http.HandleFunc("/upload", handleUpload)
-	http.HandleFunc("/search", handleSearch)
-	http.HandleFunc("/", handleRequest)
+	http.Handle(*pathPrefix+"/assets/", http.StripPrefix(*pathPrefix+"/assets/", fs))
+	if *allowUpload {
+		http.HandleFunc(*pathPrefix+"/upload", handleUpload)
+	}
+	http.HandleFunc(*pathPrefix+"/search", handleSearch)
+	http.HandleFunc(*pathPrefix+"/", handleRequest)
 
-	log.Print("listening on :3000...")
-	err := http.ListenAndServe(":3000", nil)
+	log.Printf("listening on :%s...", *port)
+	err := http.ListenAndServe(":" + *port, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -62,9 +72,13 @@ func main() {
 
 // determines if we should send a file or render a template
 func handleRequest(w http.ResponseWriter, r *http.Request) {
-	log.Print(r.URL)
-
 	path := r.URL.Path
+
+	if *pathPrefix != "" {
+		path = strings.Replace(path, *pathPrefix, "", -1)
+	}
+
+	log.Print(path)
 
 	if strings.HasSuffix(path, "/") == true {
 		// needs trailing slash on requests as dirs aren't real in GCS
@@ -90,7 +104,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		}
 
 	} else {
-		serveFile(w, r)
+		serveFile(w, r, path)
 	}
 
 }
@@ -165,7 +179,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	}
 
-	http.Redirect(w, r, path, http.StatusSeeOther)
+	http.Redirect(w, r, *pathPrefix + path, http.StatusSeeOther)
 	log.Print("upload successful")
 
 }
@@ -192,7 +206,7 @@ func uploadFile(w io.Writer, object string) error {
 	defer cancel()
 
 	// remove slash from beginning of string as it's not a real dir
-	o := client.Bucket(bucket).Object(strings.TrimPrefix(object, "/"))
+	o := client.Bucket(*bucketName).Object(strings.TrimPrefix(object, "/"))
 
 	// Upload an object with storage.Writer.
 	wc := o.NewWriter(ctx)
@@ -206,9 +220,7 @@ func uploadFile(w io.Writer, object string) error {
 	return nil
 }
 
-func serveFile(w http.ResponseWriter, r *http.Request) {
-	log.Print(r.URL.Path)
-
+func serveFile(w http.ResponseWriter, r *http.Request, path string) {
 	ctx := context.Background()
 
 	client, err := storage.NewClient(ctx)
@@ -217,7 +229,7 @@ func serveFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer client.Close()
 
-	o := client.Bucket(bucket).Object(r.URL.Path[1:])
+	o := client.Bucket(*bucketName).Object(path[1:])
 	objAttrs, err := o.Attrs(ctx)
 	if err != nil {
 		http.Error(w, "not found", 404)
@@ -258,7 +270,7 @@ func getFiles(prefix string, delim string) GCSObjects {
 		Delimiter: delim,
 	}
 
-	it := client.Bucket(bucket).Objects(ctx, query)
+	it := client.Bucket(*bucketName).Objects(ctx, query)
 
 	objs := []GCSObject{}
 	for {
@@ -267,7 +279,7 @@ func getFiles(prefix string, delim string) GCSObjects {
 			break
 		}
 		if err != nil {
-			fmt.Errorf("Bucket(%q).Objects(): %v", bucket, err)
+			fmt.Errorf("Bucket(%q).Objects(): %v", *bucketName, err)
 		}
 		objs = append(
 			objs,
@@ -365,8 +377,12 @@ func buildGCSMap(o GCSObjects, path string) map[string]interface{} {
 		"dirs":       Dirs,
 		"paths":      Paths,
 		"current":    path,
-		"bucket":     bucket,
-		"pathPrefix": pathPrefix,
+		"bucket":     *bucketName,
+		"pathPrefix": *pathPrefix,
+		"domainPrefix":*domainPrefix,
+		"allowUpload":*allowUpload,
+		"allowDelete":*allowDelete,
+		"allowSearch":*allowSearch,
 	}
 
 	return varmap
