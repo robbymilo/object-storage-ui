@@ -1,4 +1,4 @@
-module github.com/robbymilo/gcs-idea
+module github.com/robbymilo/gcsui
 
 go 1.19
 
