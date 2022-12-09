@@ -40,6 +40,7 @@ type Object struct {
 
 var bucket = "staging-static-grafana-com"
 var format = "2006-01-02 15:04"
+var pathPrefix = "/upload"
 
 func main() {
 	if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
@@ -47,8 +48,8 @@ func main() {
 	}
 
 	fs := http.FileServer(http.Dir("./assets"))
-	http.Handle("/assets/", http.StripPrefix("/assets/", fs))
-	http.HandleFunc("/upload", handleUpload)
+	http.Handle(pathPrefix+"/assets/", http.StripPrefix(pathPrefix+"/assets/", fs))
+	// http.HandleFunc("/upload", handleUpload)
 	http.HandleFunc("/search", handleSearch)
 	http.HandleFunc("/", handleRequest)
 
@@ -360,11 +361,12 @@ func buildGCSMap(o GCSObjects, path string) map[string]interface{} {
 	}
 
 	varmap := map[string]interface{}{
-		"files":   Files,
-		"dirs":    Dirs,
-		"paths":   Paths,
-		"current": path,
-		"bucket":  bucket,
+		"files":      Files,
+		"dirs":       Dirs,
+		"paths":      Paths,
+		"current":    path,
+		"bucket":     bucket,
+		"pathPrefix": pathPrefix,
 	}
 
 	return varmap
