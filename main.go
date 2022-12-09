@@ -5,6 +5,7 @@ import (
 	"cloud.google.com/go/storage"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"google.golang.org/api/iterator"
 	"html/template"
@@ -17,7 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"flag"
 )
 
 type GCSObjects []GCSObject
@@ -64,7 +64,7 @@ func main() {
 	http.HandleFunc(*pathPrefix+"/", handleRequest)
 
 	log.Printf("listening on :%s...", *port)
-	err := http.ListenAndServe(":" + *port, nil)
+	err := http.ListenAndServe(":"+*port, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	}
 
-	http.Redirect(w, r, *pathPrefix + path, http.StatusSeeOther)
+	http.Redirect(w, r, *pathPrefix+path, http.StatusSeeOther)
 	log.Print("upload successful")
 
 }
@@ -373,16 +373,16 @@ func buildGCSMap(o GCSObjects, path string) map[string]interface{} {
 	}
 
 	varmap := map[string]interface{}{
-		"files":      Files,
-		"dirs":       Dirs,
-		"paths":      Paths,
-		"current":    path,
-		"bucket":     *bucketName,
-		"pathPrefix": *pathPrefix,
-		"domainPrefix":*domainPrefix,
-		"allowUpload":*allowUpload,
-		"allowDelete":*allowDelete,
-		"allowSearch":*allowSearch,
+		"files":        Files,
+		"dirs":         Dirs,
+		"paths":        Paths,
+		"current":      path,
+		"bucket":       *bucketName,
+		"pathPrefix":   *pathPrefix,
+		"domainPrefix": *domainPrefix,
+		"allowUpload":  *allowUpload,
+		"allowDelete":  *allowDelete,
+		"allowSearch":  *allowSearch,
 	}
 
 	return varmap
