@@ -7,15 +7,17 @@
 	<link rel="stylesheet" href="{{ .pathPrefix }}/assets/style.css">
 </head>
 <body>
-  <div class="head">
-    <div class="upload">
-      {{ template "upload" . }}
+  <header>
+    <h1 class="title">Object storage uploader</h1>
+    <div class="head">
+      <div class="upload">
+        {{ template "upload" . }}
+      </div>
+      <div class="search">
+        {{ template "search" . }}
+      </div>
     </div>
-    <div class="search">
-      {{ template "search" . }}
-    </div>
-
-  </div>
+  </header>
   <div class="breadcrumb">
     {{ template "breadcrumb" . }}
   </div>
