@@ -3,7 +3,7 @@
 A browser interface for GCS.
 
 To run:
-- `export GOOGLE_APPLICATION_CREDENTIALS="/path/to/key.json"
+- `export GOOGLE_APPLICATION_CREDENTIALS="/path/to/key.json"`
 - `go run main.go --bucket-name staging-static-grafana-com --allow-upload`
 
 ```
