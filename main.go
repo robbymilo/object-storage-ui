@@ -40,7 +40,7 @@ type Object struct {
 }
 
 var port = flag.String("port", "3000", "port to listen on")
-var bucketName = flag.String("bucket-name", "default value", "name of bucket")
+var bucketName = flag.String("bucket-name", "", "name of bucket")
 var pathPrefix = flag.String("path-prefix", "", "a path to prefix the application. use if running the application on a subdirectory.")
 var domainPrefix = flag.String("domain-prefix", "", "a domain to use for serving files. use if files will be served from different application.")
 var allowUpload = flag.Bool("allow-upload", false, "allow users to upload files")
@@ -50,6 +50,11 @@ var format = "2006-01-02 15:04"
 
 func main() {
 	flag.Parse()
+
+	if *bucketName == "" {
+		log.Fatal("no bucket name specified")
+		os.Exit(1)
+	}
 
 	if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
 		log.Fatal("GOOGLE_APPLICATION_CREDENTIALS env var missing. Set to the location of the service account json key.")

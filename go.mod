@@ -1,4 +1,4 @@
-module github.com/robbymilo/gcsui
+module github.com/robbymilo/object-storage-ui
 
 go 1.19
 

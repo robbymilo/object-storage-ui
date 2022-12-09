@@ -1,28 +1,28 @@
 {{ define "layout" }}
 <!doctype html>
 <html>
-<head>
-	<meta charset="utf-8">
-	<title>{{ template "title" . }}</title>
-	<link rel="stylesheet" href="{{ .pathPrefix }}/assets/style.css">
-</head>
-<body>
-  <header>
-    <div class="head">
-      <div class="upload">
-        {{ template "upload" . }}
+  <head>
+    <meta charset="utf-8">
+    <title>{{ template "title" . }}</title>
+    <link rel="stylesheet" href="{{ .pathPrefix }}/assets/style.css">
+  </head>
+  <body>
+    <header>
+      <div class="head">
+        <div class="upload">
+          {{ template "upload" . }}
+        </div>
+        <div class="search">
+          {{ template "search" . }}
+        </div>
       </div>
-      <div class="search">
-        {{ template "search" . }}
-      </div>
+    </header>
+    <div class="breadcrumb">
+      {{ template "breadcrumb" . }}
     </div>
-  </header>
-  <div class="breadcrumb">
-    {{ template "breadcrumb" . }}
-  </div>
-  <div class="body">
-    {{ template "body" . }}
-  </div>
-</body>
+    <div class="body">
+      {{ template "body" . }}
+    </div>
+  </body>
 </html>
 {{ end }}

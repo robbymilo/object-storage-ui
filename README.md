@@ -1,6 +1,10 @@
-# Object Storage UI
+# Object Storage UI (WIP)
 
 A browser interface for GCS.
+
+To run:
+- `export GOOGLE_APPLICATION_CREDENTIALS="/path/to/key.json"
+- `go run main.go --bucket-name staging-static-grafana-com --allow-upload`
 
 ```
 Options (need to be in order):
