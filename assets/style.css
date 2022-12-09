@@ -12,6 +12,10 @@ a {
   text-decoration: none;
 }
 
+a:hover {
+  text-decoration: underline;
+}
+
 svg {
   fill: rgb(173, 186, 199);
   padding-right: 4px;
