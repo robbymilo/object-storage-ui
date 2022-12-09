@@ -108,7 +108,7 @@ input[type=text] {
 }
 
 .head {
-  padding: 0 16px 16px 16px;
+  padding: 16px;
 }
 
 .upload {
