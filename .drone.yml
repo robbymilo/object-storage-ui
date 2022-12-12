@@ -1,0 +1,23 @@
+---
+kind: pipeline
+type: docker
+name: object-storage-ui
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
+- name: docker
+  image: golang:1.19.4-alpine3.17
+  commands:
+    - make all
+
+trigger:
+  event:
+  - push
+
+volumes:
+- name: dockersock
+  host:
+    path: /var/run/docker.sock
