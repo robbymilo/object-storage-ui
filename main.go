@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"cloud.google.com/go/storage"
 	"context"
+	"embed"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -14,7 +15,6 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -48,6 +48,12 @@ var allowDelete = flag.Bool("allow-delete", false, "allow users to delete files"
 var allowSearch = flag.Bool("allow-search", true, "allow users to search files and directories. searches the entire bucket.")
 var format = "2006-01-02 15:04"
 
+//go:embed templates/*.html
+var TemplatesDir embed.FS
+
+//go:embed assets
+var AssetsDir embed.FS
+
 func main() {
 	flag.Parse()
 
@@ -60,11 +66,16 @@ func main() {
 		log.Fatal("GOOGLE_APPLICATION_CREDENTIALS env var missing. Set to the location of the service account json key.")
 	}
 
-	fs := http.FileServer(http.Dir("./assets"))
-	http.Handle(*pathPrefix+"/assets/", http.StripPrefix(*pathPrefix+"/assets/", fs))
+	var assetsFS = http.FS(AssetsDir)
+	fs := http.FileServer(assetsFS)
+
+	// Serve static files
+	http.Handle(*pathPrefix+"/assets/", fs)
+
 	if *allowUpload {
 		http.HandleFunc(*pathPrefix+"/upload", handleUpload)
 	}
+
 	http.HandleFunc(*pathPrefix+"/search", handleSearch)
 	http.HandleFunc(*pathPrefix+"/", handleRequest)
 
@@ -105,7 +116,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(m)
 		} else {
 			// send data to html template
-			render(w, r, m)
+			renderEmbeddedTemplate(w, r, m)
 		}
 
 	} else {
@@ -325,7 +336,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(m)
 		} else {
 			// send data to html template
-			render(w, r, m)
+			renderEmbeddedTemplate(w, r, m)
 		}
 	}
 }
@@ -399,10 +410,12 @@ func size(s int64) float64 {
 }
 
 // render a template based on the given data
-func render(w http.ResponseWriter, r *http.Request, v map[string]interface{}) {
-	lp := filepath.Join("templates", "layout.html")
-	fp := filepath.Join("templates", "template.html")
-	tmpl, _ := template.ParseFiles(lp, fp)
+func renderEmbeddedTemplate(w http.ResponseWriter, r *http.Request, v map[string]interface{}) {
+	t, err := template.ParseFS(TemplatesDir, "templates/*.html")
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	tmpl.ExecuteTemplate(w, "layout", v)
+	t.ExecuteTemplate(w, "layout", v)
+
 }

@@ -10,6 +10,6 @@ RUN make build-linux
 
 FROM alpine:3.17
 
-COPY --from=builder /bin/object-storage-ui_linux-amd64 /bin/object-storage-ui
+COPY --from=builder /bin/object-storage-ui_linux-amd64 /bin
 
-ENTRYPOINT [ "/bin/object-storage-ui" ]
+ENTRYPOINT [ "/bin/object-storage-ui_linux-amd64" ]
