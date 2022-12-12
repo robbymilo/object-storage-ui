@@ -18,6 +18,7 @@ steps:
 
 - name: build
   image: robbymilo/object-storage-ui-build-container:latest
+  pull: if-not-exists
   commands:
   - make all
 
