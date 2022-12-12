@@ -17,3 +17,19 @@ build-windows:
 
 start:
 	go run $(SOURCE_MAIN)
+
+SHA = $(shell git rev-parse --short HEAD)
+DOCKER_IMAGE = robbymilo/object-storage-ui:$(SHA)
+
+docker-build:
+	docker build --platform linux/x86_64 -t $(DOCKER_IMAGE) . --build-arg SHA=$(SHA)
+
+docker-run:
+	docker run \
+		--platform linux/x86_64 \
+		-v ~/key.json:/key.json \
+		-e GOOGLE_APPLICATION_CREDENTIALS=/key.json \
+		-p 3000:3000 \
+		--rm -it \
+		$(DOCKER_IMAGE) \
+		--bucket-name staging-static-grafana-com

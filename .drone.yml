@@ -8,19 +8,23 @@ platform:
   arch: amd64
 
 steps:
-- name: build-container
+- name: build-push-image
   image: plugins/docker
   volumes:
   - name: dockersock
     path: /var/run/docker.sock
-  commands:
-    - docker build . -t robbymilo/object-storage-ui-build-container:latest
-
-- name: build
-  image: robbymilo/object-storage-ui-build-container:latest
-  pull: if-not-exists
-  commands:
-  - make all
+  settings:
+    platform: linux/amd64
+    build_args:
+      - SHA=${DRONE_COMMIT_SHA:0:7}
+    username:
+      from_secret: docker_username
+    password:
+      from_secret: docker_password
+    repo: robbymilo/object-storage-ui
+    tags:
+      - ${DRONE_COMMIT_SHA:0:7}
+      - latest
 
 trigger:
   event:
