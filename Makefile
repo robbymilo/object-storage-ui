@@ -1,4 +1,4 @@
-TARGET_BIN = object-storage-ui-$(shell git rev-parse --short HEAD)
+TARGET_BIN = object-storage-ui
 TARGET_ARCH = amd64
 SOURCE_MAIN = main.go
 
@@ -22,7 +22,7 @@ SHA = $(shell git rev-parse --short HEAD)
 DOCKER_IMAGE = robbymilo/object-storage-ui:$(SHA)
 
 docker-build:
-	docker build --platform linux/x86_64 -t $(DOCKER_IMAGE) . --build-arg SHA=$(SHA)
+	docker build --platform linux/x86_64 -t $(DOCKER_IMAGE) .
 
 docker-run:
 	docker run \
