@@ -10,6 +10,8 @@ platform:
 steps:
 - name: build-push-image
   image: plugins/docker
+  environment:
+    DOCKER_BUILDKIT: 1
   volumes:
   - name: dockersock
     path: /var/run/docker.sock
