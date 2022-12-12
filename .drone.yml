@@ -10,6 +10,9 @@ platform:
 steps:
 - name: build-container
   image: plugins/docker
+  volumes:
+  - name: dockersock
+    path: /var/run/docker.sock
   commands:
     - docker build . -t robbymilo/object-storage-ui-build-container:latest
 
