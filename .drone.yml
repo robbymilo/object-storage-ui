@@ -8,10 +8,15 @@ platform:
   arch: amd64
 
 steps:
-- name: docker
-  image: golang:1.19.4-alpine3.17
+- name: build-container
+  image: plugins/docker
   commands:
-    - make all
+    - docker build . -t robbymilo/object-storage-ui-build-container:latest
+
+- name: build
+  image: robbymilo/object-storage-ui-build-container:latest
+  commands:
+  - make all
 
 trigger:
   event:
