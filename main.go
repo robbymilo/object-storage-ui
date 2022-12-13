@@ -110,7 +110,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		o := getFiles(prefix, "/")
 
 		// get list of formatted objects for final output
-		m := buildGCSMap(o, path)
+		m := buildGCSMap(o, path, r.URL.Query().Get("id"))
 
 		if r.Header["Accept"][0] == "application/json" || r.URL.Query().Get("json") == "true" {
 			w.Header().Set("Content-Type", "application/json")
@@ -330,7 +330,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// get list of formatted objects for final output
-		m := buildGCSMap(results, r.URL.Path)
+		m := buildGCSMap(results, "/search", r.URL.Query().Get("id"))
 
 		if r.Header["Accept"][0] == "application/json" || j == "true" {
 			w.Header().Set("Content-Type", "application/json")
@@ -343,8 +343,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 // transform raw GCS data into a format a template can work with
-func buildGCSMap(o GCSObjects, path string) map[string]interface{} {
-
+func buildGCSMap(o GCSObjects, path string, id string) map[string]interface{} {
 	Files := []Object{}
 	Dirs := []Object{}
 
@@ -394,6 +393,7 @@ func buildGCSMap(o GCSObjects, path string) map[string]interface{} {
 		"dirs":         Dirs,
 		"paths":        Paths,
 		"current":      path,
+		"id":						id,
 		"bucket":       *bucketName,
 		"pathPrefix":   *pathPrefix,
 		"domainPrefix": *domainPrefix,
