@@ -11,6 +11,7 @@ import (
 	"google.golang.org/api/iterator"
 	"html/template"
 	"io"
+	"io/fs"
 	"log"
 	"math"
 	"net/http"
@@ -66,12 +67,12 @@ func main() {
 		log.Fatal("GOOGLE_APPLICATION_CREDENTIALS env var missing. Set to the location of the service account json key.")
 	}
 
-	var assetsFS = http.FS(AssetsDir)
-	fs := http.FileServer(assetsFS)
+	serverRoot, err := fs.Sub(AssetsDir, "assets")
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	// Serve static files
-	http.Handle(*pathPrefix+"/assets/", fs)
-
+	http.Handle(*pathPrefix+"/assets/", http.StripPrefix(*pathPrefix+"/assets", http.FileServer(http.FS(serverRoot))))
 	if *allowUpload {
 		http.HandleFunc(*pathPrefix+"/upload", handleUpload)
 	}
@@ -80,7 +81,7 @@ func main() {
 	http.HandleFunc(*pathPrefix+"/", handleRequest)
 
 	log.Printf("listening on :%s...", *port)
-	err := http.ListenAndServe(":"+*port, nil)
+	err = http.ListenAndServe(":"+*port, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
