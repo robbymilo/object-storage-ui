@@ -132,8 +132,13 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	files := r.MultipartForm.File["filename"]
 	path := r.Form.Get("path")
 
+	id := ""
+	if (r.URL.Query().Get("id") != "") {
+		id = "?id=" + r.URL.Query().Get("id")
+	}
+
 	for _, fileHeader := range files {
-		// check if file exists
+		// TODO check if file exists
 
 		// Open the file
 		file, err := fileHeader.Open()
@@ -194,9 +199,11 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// TODO delete tmp file
+
 	}
 
-	http.Redirect(w, r, *pathPrefix+path, http.StatusSeeOther)
+	http.Redirect(w, r, *pathPrefix+path+id, http.StatusSeeOther)
 	log.Print("upload successful")
 
 }

@@ -19,7 +19,7 @@
 {{ define "upload" }}
   {{ if and (ne .current "/search") (.allowUpload) }}
   <div>
-    <form class="upload-form" enctype="multipart/form-data" action="{{ .pathPrefix }}/upload" autocomplete="off" method="post">
+    <form class="upload-form" enctype="multipart/form-data" action="{{ .pathPrefix }}/upload{{ if .id }}?id={{ .id }}{{ end }}" autocomplete="off" method="post">
       <div>
         <div class="input-group">
           <label for="path">Upload to folder:</label>
