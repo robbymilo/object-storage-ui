@@ -4,7 +4,8 @@ A browser interface for GCS.
 
 To run:
 - `export GOOGLE_APPLICATION_CREDENTIALS="/path/to/key.json"`
-- `go run main.go --bucket-name staging-static-grafana-com --allow-upload`
+- `go run main.go --bucket-name {gcs-bucket-name} --allow-upload`
+- visit http://localhost:3000, or visit http://localhost:3000?json=true for a json view
 
 ```
 Options (need to be in order):
