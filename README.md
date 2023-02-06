@@ -1,3 +1,5 @@
+[![Build Status](https://ci.rmilo.dev/api/badges/robbymilo/object-storage-ui/status.svg)](https://ci.rmilo.dev/robbymilo/object-storage-ui)
+
 # Object Storage UI (WIP)
 
 A browser interface for GCS.
