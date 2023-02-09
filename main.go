@@ -2,13 +2,11 @@ package main
 
 import (
 	"bufio"
-	"cloud.google.com/go/storage"
 	"context"
 	"embed"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"google.golang.org/api/iterator"
 	"html/template"
 	"io"
 	"io/fs"
@@ -19,6 +17,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"cloud.google.com/go/storage"
+	"google.golang.org/api/iterator"
 )
 
 type GCSObjects []GCSObject
@@ -133,13 +134,11 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	path := r.Form.Get("path")
 
 	id := ""
-	if (r.URL.Query().Get("id") != "") {
+	if r.URL.Query().Get("id") != "" {
 		id = "?id=" + r.URL.Query().Get("id")
 	}
 
 	for _, fileHeader := range files {
-		// TODO check if file exists
-
 		// Open the file
 		file, err := fileHeader.Open()
 		if err != nil {
@@ -195,7 +194,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		err = uploadFile(bufio.NewWriter(final), path+fileHeader.Filename)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			log.Fatalf("failed uploading to GCS: %v", err)
+			log.Println("failed uploading to GCS:", err)
 			return
 		}
 
@@ -210,7 +209,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 // upload a single file
 func uploadFile(w io.Writer, object string) error {
-	log.Print("uploading " + object + " to GCS")
+	log.Print("attempting to upload " + object + " to GCS")
 
 	ctx := context.Background()
 
@@ -230,6 +229,11 @@ func uploadFile(w io.Writer, object string) error {
 	defer cancel()
 
 	// remove slash from beginning of string as it's not a real dir
+	exists := checkFile(object)
+	if exists {
+		return fmt.Errorf("file already exists: %v", object)
+	}
+
 	o := client.Bucket(*bucketName).Object(strings.TrimPrefix(object, "/"))
 
 	// Upload an object with storage.Writer.
@@ -275,6 +279,30 @@ func serveFile(w http.ResponseWriter, r *http.Request, path string) {
 	if _, err := io.Copy(w, rc); err != nil {
 		return
 	}
+}
+
+func checkFile(path string) bool {
+	ctx := context.Background()
+
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		log.Fatalf("failed to create client: %v", err)
+	}
+	defer client.Close()
+
+	o := client.Bucket(*bucketName).Object(path[1:])
+	if err != nil {
+		return false
+	}
+	ot := o.ReadCompressed(true)
+	rc, err := ot.NewReader(ctx)
+	if err != nil {
+		return false
+	}
+	defer rc.Close()
+
+	return true
+
 }
 
 // get raw data of a "dir" from GCS
@@ -400,7 +428,7 @@ func buildGCSMap(o GCSObjects, path string, id string) map[string]interface{} {
 		"dirs":         Dirs,
 		"paths":        Paths,
 		"current":      path,
-		"id":						id,
+		"id":           id,
 		"bucket":       *bucketName,
 		"pathPrefix":   *pathPrefix,
 		"domainPrefix": *domainPrefix,
