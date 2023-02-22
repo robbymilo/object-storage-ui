@@ -171,7 +171,8 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		name := fmt.Sprintf("./tmp%s%s", path, fileHeader.Filename)
+		renamed := strings.Replace(fileHeader.Filename, " ", "-", -1)
+		name := fmt.Sprintf("./tmp%s%s", path, renamed)
 		f, err := os.Create(name)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -191,7 +192,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 			log.Fatalf("failed creating file: %s", err)
 		}
 
-		err = uploadFile(bufio.NewWriter(final), path+fileHeader.Filename)
+		err = uploadFile(bufio.NewWriter(final), path+renamed)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			log.Println("failed uploading to GCS:", err)
