@@ -1,6 +1,6 @@
-FROM golang:1.19.4-alpine3.17 as builder
+FROM golang:1.22.1-alpine3.19 as builder
 
-RUN apk update && apk add make git && rm -rf /var/cache/apk/*
+RUN apk update && apk add --no-cache make git
 
 WORKDIR /
 
@@ -8,7 +8,7 @@ COPY . .
 
 RUN make build-linux
 
-FROM alpine:3.17
+FROM alpine:3.19.1
 
 COPY --from=builder /bin/object-storage-ui_linux-amd64 /bin
 
