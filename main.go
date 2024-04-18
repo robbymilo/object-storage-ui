@@ -1,11 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"embed"
-	"encoding/json"
-	"flag"
 	"fmt"
 	"html/template"
 	"io"
@@ -19,10 +16,11 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/urfave/cli/v2"
 	"google.golang.org/api/iterator"
 )
-
-type GCSObjects []GCSObject
 
 type GCSObject struct {
 	Name    string
@@ -32,8 +30,6 @@ type GCSObject struct {
 	Size    int64
 }
 
-type Objects []Object
-
 type Object struct {
 	Name    string
 	Value   string
@@ -41,66 +37,134 @@ type Object struct {
 	Size    float64
 }
 
-var port = flag.String("port", "3000", "port to listen on")
-var bucketName = flag.String("bucket-name", "", "name of bucket")
-var pathPrefix = flag.String("path-prefix", "", "a path to prefix the application. use if running the application on a subdirectory.")
-var domainPrefix = flag.String("domain-prefix", "", "a domain to use for serving files. use if files will be served from different application.")
-var allowUpload = flag.Bool("allow-upload", false, "allow users to upload files")
-var allowDelete = flag.Bool("allow-delete", false, "allow users to delete files")
-var allowSearch = flag.Bool("allow-search", true, "allow users to search files and directories. searches the entire bucket.")
+type response struct {
+	Files        []Object
+	Dirs         []Object
+	Paths        []Object
+	Current      string
+	Id           string
+	BucketName   string
+	PathPrefix   string
+	DomainPrefix string
+	AllowUpload  bool
+	AllowDelete  bool
+	AllowSearch  bool
+}
+
 var format = "2006-01-02 15:04"
 
 //go:embed templates/*.html
-var TemplatesDir embed.FS
+var templatesDir embed.FS
 
 //go:embed assets
-var AssetsDir embed.FS
+var assetsDir embed.FS
 
 func main() {
-	flag.Parse()
 
-	if *bucketName == "" {
-		log.Fatal("no bucket name specified")
-		os.Exit(1)
+	app := &cli.App{
+		Name:  "object-storage-ui",
+		Usage: "A browser interface for Google Cloud Storage (GCS).",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "bucket-name",
+				Usage: "The name of the bucket to serve.",
+			},
+			&cli.StringFlag{
+				Name:  "path-prefix",
+				Usage: "A path to prefix the application. Use if running the application on a subdirectory.",
+				Value: "",
+			},
+			&cli.StringFlag{
+				Name:  "domain-prefix",
+				Usage: "A domain to use for serving files. Use if files will be served from different application.",
+				Value: "",
+			},
+			&cli.BoolFlag{
+				Name:  "allow-upload",
+				Usage: "Allow files to be uploaded.",
+				Value: false,
+			},
+			&cli.BoolFlag{
+				Name:  "allow-delete",
+				Usage: "Allow files to be deleted.",
+				Value: false,
+			},
+			&cli.BoolFlag{
+				Name:  "allow-search",
+				Usage: "Allow files to be search.",
+				Value: true,
+			},
+			&cli.StringFlag{
+				Usage:    "Location of the service account json key.",
+				EnvVars:  []string{"GOOGLE_APPLICATION_CREDENTIALS"},
+				Required: true,
+			},
+		},
+		Action: func(cCtx *cli.Context) error {
+
+			if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
+				log.Fatal("GOOGLE_APPLICATION_CREDENTIALS env var missing. Set to the location of the service account json key.")
+			}
+
+			r := chi.NewRouter()
+			r.Use(middleware.Logger)
+
+			var assetsFs = fs.FS(assetsDir)
+			assetsContent, err := fs.Sub(assetsFs, "assets")
+			if err != nil {
+				log.Fatal("error loading assets dir:", err)
+			}
+			r.Handle(cCtx.String("path-prefix")+"/assets/*", http.StripPrefix("/assets/", http.FileServer(http.FS(assetsContent))))
+
+			r.Get(cCtx.String("path-prefix")+"/*", func(w http.ResponseWriter, r *http.Request) {
+				handleRequest(w, r, *cCtx)
+			})
+
+			if cCtx.Bool("allow-upload") {
+				r.Post(cCtx.String("path-prefix")+"/upload", func(w http.ResponseWriter, r *http.Request) {
+					handleUpload(w, r, *cCtx)
+				})
+			}
+
+			r.Get(cCtx.String("path-prefix")+"/search", func(w http.ResponseWriter, r *http.Request) {
+				handleSearch(w, r, *cCtx)
+			})
+
+			r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+				_, err := w.Write([]byte("ok\n"))
+				if err != nil {
+					fmt.Println("health check error:", err)
+				}
+			})
+
+			fmt.Println("listening on :3000")
+
+			err = http.ListenAndServe(":3000", r)
+			if err != nil {
+				log.Fatal("error loading application on port 3000:", err)
+			}
+
+			return nil
+		},
 	}
 
-	if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
-		log.Fatal("GOOGLE_APPLICATION_CREDENTIALS env var missing. Set to the location of the service account json key.")
-	}
-
-	serverRoot, err := fs.Sub(AssetsDir, "assets")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	http.Handle(*pathPrefix+"/assets/", http.StripPrefix(*pathPrefix+"/assets", http.FileServer(http.FS(serverRoot))))
-	if *allowUpload {
-		http.HandleFunc(*pathPrefix+"/upload", handleUpload)
-	}
-
-	http.HandleFunc(*pathPrefix+"/search", handleSearch)
-	http.HandleFunc(*pathPrefix+"/", handleRequest)
-
-	log.Printf("listening on :%s...", *port)
-	err = http.ListenAndServe(":"+*port, nil)
-	if err != nil {
-		log.Fatal(err)
+	if err := app.Run(os.Args); err != nil {
+		log.Fatal("error loading application:", err)
 	}
 }
 
-// determines if we should send a file or render a template
-func handleRequest(w http.ResponseWriter, r *http.Request) {
+// handleRequest determines if we should send a file or render a template.
+func handleRequest(w http.ResponseWriter, r *http.Request, c cli.Context) {
 	path := r.URL.Path
+	prefix := c.String("path-prefix")
 
-	if *pathPrefix != "" {
-		path = strings.Replace(path, *pathPrefix, "", -1)
+	if prefix != "" {
+		path = strings.Replace(path, prefix, "", -1)
 	}
 
-	log.Print(path)
+	if strings.HasSuffix(path, "/") {
 
-	if strings.HasSuffix(path, "/") == true {
 		// needs trailing slash on requests as dirs aren't real in GCS
-
 		prefix := ""
 		if path[1:] != "" {
 			// non-root path
@@ -108,28 +172,28 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// get list of raw GCS objects
-		o := getFiles(prefix, "/")
+		// objects := getFiles(prefix, "/", c)
+		objects := getFiles(prefix, "/", c)
 
 		// get list of formatted objects for final output
-		m := buildGCSMap(o, path, r.URL.Query().Get("id"))
+		m := buildResponse(objects, path, r.URL.Query().Get("id"), c)
 
-		if r.Header["Accept"][0] == "application/json" || r.URL.Query().Get("json") == "true" {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(m)
-		} else {
-			// send data to html template
-			renderEmbeddedTemplate(w, r, m)
-		}
+		// send data to html template
+		renderEmbeddedTemplate(w, m)
 
 	} else {
-		serveFile(w, r, path)
+		serveFile(w, path, c)
 	}
 
 }
 
-// get multiple files to upload
-func handleUpload(w http.ResponseWriter, r *http.Request) {
-	r.ParseMultipartForm(100 << 20)
+// handleUpload takes multiple files from a post request.
+func handleUpload(w http.ResponseWriter, r *http.Request, c cli.Context) {
+	err := r.ParseMultipartForm(100 << 20)
+	if err != nil {
+		fmt.Println("error parsing form data:", err)
+	}
+
 	files := r.MultipartForm.File["filename"]
 	path := r.Form.Get("path")
 
@@ -142,6 +206,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		// Open the file
 		file, err := fileHeader.Open()
 		if err != nil {
+			fmt.Println("error opening file:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -151,12 +216,14 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		buff := make([]byte, 512)
 		_, err = file.Read(buff)
 		if err != nil {
+			fmt.Println("error reading file:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		_, err = file.Seek(0, io.SeekStart)
 		if err != nil {
+			fmt.Println("error seeking file:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -167,14 +234,16 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 		err = os.MkdirAll("./tmp"+path, os.ModePerm)
 		if err != nil {
+			fmt.Println("error creating temp dir:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		renamed := strings.Replace(fileHeader.Filename, " ", "-", -1)
-		name := fmt.Sprintf("./tmp%s%s", path, renamed)
-		f, err := os.Create(name)
+		temp_file := fmt.Sprintf("./tmp%s%s", path, renamed)
+		f, err := os.Create(temp_file)
 		if err != nil {
+			fmt.Println("error creating temp file:", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -183,45 +252,48 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 		_, err = io.Copy(f, file)
 		if err != nil {
+			fmt.Println("error copying file:", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		final, err := os.OpenFile(name, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		err = uploadFile(path+renamed, c)
 		if err != nil {
-			log.Fatalf("failed creating file: %s", err)
-		}
-
-		err = uploadFile(bufio.NewWriter(final), path+renamed)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
 			log.Println("failed uploading to GCS:", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// TODO delete tmp file
+		err = os.Remove(temp_file)
+		if err != nil {
+			fmt.Println("error deleting temporary file: ", err)
+		}
+
+		fmt.Printf("upload %s successful\n", path+renamed)
 
 	}
 
-	http.Redirect(w, r, *pathPrefix+path+id, http.StatusSeeOther)
-	log.Print("upload successful")
+	http.Redirect(w, r, c.String("path-prefix")+path+id, http.StatusSeeOther)
 
 }
 
-// upload a single file
-func uploadFile(w io.Writer, object string) error {
-	log.Print("attempting to upload " + object + " to GCS")
+// uploadFile uploads a single file to GCS.
+func uploadFile(object string, c cli.Context) error {
+	fmt.Printf("attempting to upload %s to GCS\n", object)
 
 	ctx := context.Background()
 
+	// open connection with GCS
 	client, err := storage.NewClient(ctx)
 	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
+		fmt.Println("Failed to create client:", err)
 	}
 	defer client.Close()
 
+	// open temp file
 	f, err := os.Open(fmt.Sprintf("./tmp%s", object))
 	if err != nil {
+		fmt.Println("error opening file:", err)
 		return fmt.Errorf("os.Open: %v", err)
 	}
 	defer f.Close()
@@ -230,35 +302,38 @@ func uploadFile(w io.Writer, object string) error {
 	defer cancel()
 
 	// remove slash from beginning of string as it's not a real dir
-	exists := checkFile(object)
+	exists := checkFile(object, c)
 	if exists {
 		return fmt.Errorf("file already exists: %v", object)
 	}
 
-	o := client.Bucket(*bucketName).Object(strings.TrimPrefix(object, "/"))
+	o := client.Bucket(c.String("bucket-name")).Object(strings.TrimPrefix(object, "/"))
 
 	// Upload an object with storage.Writer.
 	wc := o.NewWriter(ctx)
 	if _, err = io.Copy(wc, f); err != nil {
+		fmt.Println("error copying file:", err)
 		return fmt.Errorf("io.Copy: %v", err)
 	}
 	if err := wc.Close(); err != nil {
+		fmt.Println("error closing writer:", err)
 		return fmt.Errorf("Writer.Close: %v", err)
 	}
-	fmt.Fprintf(w, "Blob %v uploaded.\n", object)
+	fmt.Printf("Blob %v uploaded to GCS.\n", object)
 	return nil
 }
 
-func serveFile(w http.ResponseWriter, r *http.Request, path string) {
+// serveFile serves a single file from GCS.
+func serveFile(w http.ResponseWriter, path string, c cli.Context) {
 	ctx := context.Background()
 
 	client, err := storage.NewClient(ctx)
 	if err != nil {
-		log.Fatalf("failed to create client: %v", err)
+		fmt.Printf("failed to create client: %v", err)
 	}
 	defer client.Close()
 
-	o := client.Bucket(*bucketName).Object(path[1:])
+	o := client.Bucket(c.String("bucket-name")).Object(path[1:])
 	objAttrs, err := o.Attrs(ctx)
 	if err != nil {
 		http.Error(w, "not found", 404)
@@ -282,22 +357,24 @@ func serveFile(w http.ResponseWriter, r *http.Request, path string) {
 	}
 }
 
-func checkFile(path string) bool {
+func checkFile(path string, c cli.Context) bool {
 	ctx := context.Background()
 
 	client, err := storage.NewClient(ctx)
 	if err != nil {
-		log.Fatalf("failed to create client: %v", err)
+		fmt.Printf("failed to create client: %v", err)
 	}
 	defer client.Close()
 
-	o := client.Bucket(*bucketName).Object(path[1:])
+	o := client.Bucket(c.String("bucket-name")).Object(path[1:])
 	if err != nil {
+		fmt.Println("error getting object from GCS:", err)
 		return false
 	}
 	ot := o.ReadCompressed(true)
 	rc, err := ot.NewReader(ctx)
 	if err != nil {
+		fmt.Println("error reading file from GCS:", err)
 		return false
 	}
 	defer rc.Close()
@@ -307,15 +384,15 @@ func checkFile(path string) bool {
 }
 
 // get raw data of a "dir" from GCS
-func getFiles(prefix string, delim string) GCSObjects {
+func getFiles(prefix string, delim string, c cli.Context) []GCSObject {
 	ctx := context.Background()
 	client, err := storage.NewClient(ctx)
 	if err != nil {
-		fmt.Errorf("storage.NewClient: %v", err)
+		fmt.Println("error opening storage client", err)
 	}
 	defer client.Close()
 
-	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
+	ctx, cancel := context.WithTimeout(ctx, time.Second*100)
 	defer cancel()
 
 	query := &storage.Query{
@@ -323,7 +400,7 @@ func getFiles(prefix string, delim string) GCSObjects {
 		Delimiter: delim,
 	}
 
-	it := client.Bucket(*bucketName).Objects(ctx, query)
+	it := client.Bucket(c.String("bucket-name")).Objects(ctx, query)
 
 	objs := []GCSObject{}
 	for {
@@ -332,7 +409,7 @@ func getFiles(prefix string, delim string) GCSObjects {
 			break
 		}
 		if err != nil {
-			fmt.Errorf("Bucket(%q).Objects(): %v", *bucketName, err)
+			fmt.Printf("Bucket(%q).Objects(): %v", c.String("bucket-name"), err)
 		}
 		objs = append(
 			objs,
@@ -347,44 +424,39 @@ func getFiles(prefix string, delim string) GCSObjects {
 	return objs
 }
 
-func handleSearch(w http.ResponseWriter, r *http.Request) {
-	log.Print(r.URL)
-	j := r.URL.Query().Get("json")
+// handleSearch searches the GCS bucket and returns the results.
+func handleSearch(w http.ResponseWriter, r *http.Request, c cli.Context) {
 
 	query := r.URL.Query().Get("q")
 	if query != "" {
-		o := getFiles("", "")
+		objects := getFiles("", "", c)
 
-		results := o[:0]
+		results := objects[:0]
 
 		// loop through all the bucket objects and check if the name contains the query
 		// if it does, build a new slice and add the item
-		for _, item := range o {
+		for _, item := range objects {
 			if strings.Contains(item.Name, query) {
 				results = append(results, item)
 			}
 		}
 
 		// get list of formatted objects for final output
-		m := buildGCSMap(results, "/search", r.URL.Query().Get("id"))
+		m := buildResponse(results, "/search", r.URL.Query().Get("id"), c)
 
-		if r.Header["Accept"][0] == "application/json" || j == "true" {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(m)
-		} else {
-			// send data to html template
-			renderEmbeddedTemplate(w, r, m)
-		}
+		// send data to html template
+		renderEmbeddedTemplate(w, m)
 	}
 }
 
-// transform raw GCS data into a format a template can work with
-func buildGCSMap(o GCSObjects, path string, id string) map[string]interface{} {
+// buildResponse builds the response that will be sent to the template.
+func buildResponse(objects []GCSObject, path, id string, c cli.Context) *response {
 	Files := []Object{}
 	Dirs := []Object{}
+	Paths := []Object{}
 
-	// build template compatiable map
-	for _, item := range o {
+	// build template compatible map
+	for _, item := range objects {
 
 		updated := item.Updated.Format(format)
 
@@ -412,7 +484,6 @@ func buildGCSMap(o GCSObjects, path string, id string) map[string]interface{} {
 	}
 
 	// add current path to map
-	Paths := []Object{}
 	for _, v := range strings.Split(path, "/") {
 		if v != "" {
 			Paths = append(
@@ -424,35 +495,38 @@ func buildGCSMap(o GCSObjects, path string, id string) map[string]interface{} {
 		}
 	}
 
-	varmap := map[string]interface{}{
-		"files":        Files,
-		"dirs":         Dirs,
-		"paths":        Paths,
-		"current":      path,
-		"id":           id,
-		"bucket":       *bucketName,
-		"pathPrefix":   *pathPrefix,
-		"domainPrefix": *domainPrefix,
-		"allowUpload":  *allowUpload,
-		"allowDelete":  *allowDelete,
-		"allowSearch":  *allowSearch,
+	response := &response{
+		Files:        Files,
+		Dirs:         Dirs,
+		Paths:        Paths,
+		Current:      path,
+		Id:           id,
+		BucketName:   c.String("bucket-name"),
+		PathPrefix:   c.String("path-prefix"),
+		DomainPrefix: c.String("domain-prefix"),
+		AllowUpload:  c.Bool("allow-upload"),
+		AllowDelete:  c.Bool("allow-delete"),
+		AllowSearch:  c.Bool("allow-search"),
 	}
 
-	return varmap
+	return response
 }
 
-// convert raw size to KB
+// size converts raw size from GCS to KB.
 func size(s int64) float64 {
 	return math.Round(float64(s) * .001)
 }
 
-// render a template based on the given data
-func renderEmbeddedTemplate(w http.ResponseWriter, r *http.Request, v map[string]interface{}) {
-	t, err := template.ParseFS(TemplatesDir, "templates/*.html")
+// renderEmbeddedTemplate renders a template based on the given data.
+func renderEmbeddedTemplate(w http.ResponseWriter, v *response) {
+	t, err := template.ParseFS(templatesDir, "templates/*.html")
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("error parsing embedded template dir:", err)
 	}
 
-	t.ExecuteTemplate(w, "layout", v)
+	err = t.ExecuteTemplate(w, "layout", v)
+	if err != nil {
+		fmt.Println("error executing tempate:", err)
+	}
 
 }

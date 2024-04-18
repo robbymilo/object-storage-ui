@@ -8,6 +8,13 @@ platform:
   arch: amd64
 
 steps:
+- name: lint
+  image: golang:1.21.4-alpine
+  commands:
+    - apk add make git curl
+    - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+    - make lint
+
 - name: build-push-image
   image: plugins/docker
   environment:
@@ -25,6 +32,8 @@ steps:
     tags:
       - ${DRONE_COMMIT_SHA:0:7}
       - latest
+  depends_on:
+    - lint
 
 trigger:
   event:

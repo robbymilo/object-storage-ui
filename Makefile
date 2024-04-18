@@ -34,3 +34,6 @@ docker-run:
 		$(DOCKER_IMAGE) \
 		--bucket-name staging-static-grafana-com \
 		--allow-upload
+
+lint:
+	golangci-lint run --timeout=10m
